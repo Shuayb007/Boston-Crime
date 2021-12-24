@@ -1,0 +1,225 @@
+---
+title: "Dataviz Challenge"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+library(tidyverse)
+library(leaflet)
+library(ggplot2)
+library(ggpmisc)
+library(wordcloud)
+library(tidytext)
+
+#Reading the data 
+
+crime<-read_csv("crime.csv", show_col_types = FALSE)
+
+offense_code<-read_csv("offense_codes.csv", show_col_types = FALSE)
+
+```
+
+```{r}
+#View(crime)
+#View(offense_code)
+
+summary(crime)
+
+```
+
+
+Data Wrangling and Cleaning
+```{r}
+#Creating a Tibble
+
+Crime <- as_tibble(crime)
+Offense_code <- as_tibble(offense_code)
+
+Crime 
+Offense_code
+```
+
+
+```{r}
+ncol(Crime)
+#changing all column names to lower case
+names(Crime)<- tolower(names(Crime))
+names(Crime)
+
+#naming the offense code column in crime same as offence code
+colnames(Offense_code)[colnames(Offense_code)=="CODE"] <- "offense_code"
+
+
+#changing street to lower case
+street<- Crime$street
+street[1:5]
+street<- tolower(street)
+street[1:5]
+
+#removing leading zeros in the offense code column
+offense_code<- str_remove(Crime$offense_code, "0")
+offense_code[1:5]
+offense_code<- gsub("(?<![0-9])0+", "", offense_code, perl = TRUE)
+offense_code[1:5]
+
+#replacing Y in shooting with 1 and making the column a numeric
+Crime$shooting<- Crime$shooting
+Crime$shooting[1297:1862]
+Crime$shooting[is.na(Crime$shooting)]=0
+Crime$shooting[1297:1862]
+Crime$shooting[Crime$shooting=='Y']=1
+Crime$shooting[1297:1862]
+Crime$shooting<- as.numeric(Crime$shooting)
+Crime$shooting[1297:1862]
+
+#changing offense description to lower case
+description<- Crime$offense_description
+description[1:5]
+description<- tolower(description)
+description[1:5]
+
+#removing puntuations
+description<- gsub('[[:punct:]]', "", description)
+description[31451]
+
+#removing spaces
+description<- str_replace_all(description, " ", " ")
+description[31451]
+
+descriptiont<- gsub('[[:digit:]]', "", description)
+```
+
+
+```{r}
+Offense_code%>%
+  mutate(offence_code=Offense_code$CODE)
+
+Offense_code$CODE
+```
+
+
+```{r}
+
+Crime_join <- merge(Crime,Offense_code)
+
+names(Crime_join)
+```
+
+
+```{r}
+colnames(Crime_join)[colnames(Crime_join)=="NAME"] <- "offense_name"
+```
+
+
+```{r}
+offense_name<-Crime_join$offense_name
+
+offense_name<- gsub('[^\x20-\x7F]', "", offense_name)
+names(offense_name)<- tolower(offense_name)
+
+```
+
+Additional Cleaning
+```{r}
+names(Crime_join)
+
+```
+
+Data Vizualization
+```{r}
+#Line grapgh of Incident Timeline
+Crime_join%>%
+  select(year, incident_number)%>%
+  group_by(year)%>%
+  summarise(NumberofIncident = n())%>%
+  ggplot()+
+  geom_line(aes(x=year, y=NumberofIncident))+
+  xlab("Year") + ylab("Number of Incidents")
+```
+
+
+```{r}
+#Bar chart of Time of the day by Number of Incidents
+Crime_join%>%
+  select(hour, incident_number)%>%
+  group_by(incident_number)%>%
+  ggplot()+
+  geom_bar(aes(x=hour), color="blue")+
+  ggtitle("Time and Number of Incidents")+
+  #geom_density(aes(x=hour), fill="blue")+
+  #xlim(c(2006, 2020))+ 
+  #ylim(c(1000, 5000))+
+  xlab("Time of Incident") + ylab("Number of Incidents")
+```
+
+
+```{r}
+#Top 10streets with the most incidents reported
+Crime_join%>%
+  select(street, incident_number)%>%
+  group_by(street)%>%
+  filter(!is.na(street))%>%
+  summarize(NumberofIncident = n())%>%
+  arrange(desc(NumberofIncident))%>%
+  head(10)%>%
+  ggplot()+
+  geom_point(aes(x = NumberofIncident, y=street))+
+  geom_label(aes(x = NumberofIncident, y=street, label=street))+
+  ggtitle("Top 10 Streets by Reported Incidents")+
+  xlab("Number of Incidents") + ylab("Streets")
+```
+
+
+```{r}
+#Proportion of Shooting Incidents
+Crime_join%>%
+  select(shooting)%>%
+  group_by(shooting)%>%
+  summarise(Count= n(), shooting_incidents=sum(shooting))%>%
+  mutate(shooting=as.factor(shooting), Proportion = Count/sum(Count)*100, CummProp = cumsum(Proportion),ymin = c(0, head(CummProp, n=-1))) %>%
+  ggplot()+
+  geom_rect(mapping = aes(ymax=CummProp, ymin=ymin,xmax=4, xmin=3, fill=shooting))+
+  geom_label(aes(x = 2,y=Proportion, label=Proportion))+
+  coord_polar(theta="y")+ # Try to remove that to understand how the chart is built initially
+  xlim(c(-1, 4))+
+  theme_void() 
+
+```
+
+
+```{r}
+#Map of locations by Number of Incidents
+pal <- colorFactor(c("red","gray","orange","white","blue"),
+                   domain = unique(Crime_join$offense_code))
+
+      map <- leaflet(Crime_join) %>%
+      addProviderTiles("CartoDB.Positron") %>%
+      addCircleMarkers(
+          color = ~pal(Crime_join$offense_code),
+          stroke = FALSE, fillOpacity = 0.5,
+          lat =  Crime_join$lat,
+          lng = Crime_join$long,
+          clusterOptions = markerClusterOptions(),
+          popup = as.character(Crime_join$street))
+      map
+```
+
+
+```{r}
+#Wordcloud of Incident description
+Word_Cloud = function(x)
+{
+  Crime_join %>%
+    unnest_tokens(word, offense_description) %>%
+    filter(!word %in% stop_words$word) %>%
+    filter(!word %in% c("mfr", "dist", "val","mv" ))%>%
+    count(word,sort = TRUE) %>%
+    ungroup() %>%
+    head(50) %>%
+    with(wordcloud(word, n, max.words = 40,colors=brewer.pal(8, "Set1")))
+}
+
+Word_Cloud(offense_description)
+```
