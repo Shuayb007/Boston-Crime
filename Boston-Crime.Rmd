@@ -119,7 +119,10 @@ names(offense_name)<- tolower(offense_name)
 
 Data Visualization
 ```{r}
+ 
 #How's the crime reported over the years
+
+
 Crime_join%>%
   select(year, incident_number)%>%
   group_by(year)%>%
@@ -131,7 +134,9 @@ Crime_join%>%
 
 
 ```{r}
+
 #What time of the day does most incidents get reported?
+
 Crime_join%>%
   select(hour, incident_number)%>%
   group_by(incident_number)%>%
@@ -146,7 +151,9 @@ Crime_join%>%
 
 
 ```{r}
+
 #What are the top 10 streets with the most incidents reported?
+
 Crime_join%>%
   select(street, incident_number)%>%
   group_by(street)%>%
@@ -163,7 +170,9 @@ Crime_join%>%
 
 
 ```{r}
-#What'sthe Proportion of Shooting Incidents?
+
+#What's the Proportion of Shooting Incidents?
+
 Crime_join%>%
   select(shooting)%>%
   group_by(shooting)%>%
@@ -180,7 +189,9 @@ Crime_join%>%
 
 
 ```{r}
+
 #What are the number of incidents reported across neighborhoods?
+
 pal <- colorFactor(c("red","gray","orange","white","blue"),
                    domain = unique(Crime_join$offense_code))
 
@@ -198,7 +209,9 @@ pal <- colorFactor(c("red","gray","orange","white","blue"),
 
 
 ```{r}
+
 #Which words are usually used to describe incidents?
+
 Word_Cloud = function(x)
 {
   Crime_join %>%
